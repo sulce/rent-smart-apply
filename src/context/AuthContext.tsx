@@ -1,7 +1,6 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { AgentProfile, UserRole } from "@/types";
+import { AgentProfile, UserRole, UserProfile, CustomQuestion } from "@/types"; // Added missing types
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { User, Session } from '@supabase/supabase-js';
@@ -392,6 +391,212 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // Add a custom question
+  const addCustomQuestion = async (question: CustomQuestion) => {
+    try {
+      if (!user || !agentProfile) {
+        throw new Error("User not authenticated or agent profile not found");
+      }
+
+      setIsLoading(true);
+
+      const dbQuestion = {
+        agent_id: agentProfile.id,
+        question_text: question.questionText,
+        required: question.required || false,
+        type: question.type,
+        options: question.options || []
+      };
+
+      // Insert the question
+      const { data, error } = await supabase
+        .from('custom_questions')
+        .insert(dbQuestion)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+
+      // Update the agentProfile state
+      const newQuestion: CustomQuestion = {
+        id: data.id,
+        questionText: data.question_text,
+        required: data.required,
+        type: data.type as "text" | "radio" | "checkbox" | "select",
+        options: data.options || []
+      };
+
+      setAgentProfile(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          customQuestions: [...prev.customQuestions, newQuestion]
+        };
+      });
+
+      toast({
+        title: "Question added",
+        description: "Custom question has been added successfully.",
+      });
+    } catch (error: any) {
+      console.error("Add custom question error:", error.message);
+      toast({
+        title: "Adding question failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Delete a custom question
+  const deleteCustomQuestion = async (questionId: string) => {
+    try {
+      if (!user || !agentProfile) {
+        throw new Error("User not authenticated or agent profile not found");
+      }
+
+      setIsLoading(true);
+
+      // Delete the question
+      const { error } = await supabase
+        .from('custom_questions')
+        .delete()
+        .eq('id', questionId);
+
+      if (error) throw new Error(error.message);
+
+      // Update the agentProfile state
+      setAgentProfile(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          customQuestions: prev.customQuestions.filter(q => q.id !== questionId)
+        };
+      });
+
+      toast({
+        title: "Question deleted",
+        description: "Custom question has been deleted successfully.",
+      });
+    } catch (error: any) {
+      console.error("Delete custom question error:", error.message);
+      toast({
+        title: "Deleting question failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Update a custom question
+  const updateCustomQuestion = async (question: CustomQuestion) => {
+    try {
+      if (!user || !agentProfile || !question.id) {
+        throw new Error("User not authenticated, agent profile not found, or invalid question");
+      }
+
+      setIsLoading(true);
+
+      const dbQuestion = {
+        agent_id: agentProfile.id,
+        question_text: question.questionText,
+        required: question.required || false,
+        type: question.type,
+        options: question.options || []
+      };
+
+      // Update the question
+      const { error } = await supabase
+        .from('custom_questions')
+        .update(dbQuestion)
+        .eq('id', question.id);
+
+      if (error) throw new Error(error.message);
+
+      // Update the agentProfile state
+      setAgentProfile(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          customQuestions: prev.customQuestions.map(q => 
+            q.id === question.id ? question : q
+          )
+        };
+      });
+
+      toast({
+        title: "Question updated",
+        description: "Custom question has been updated successfully.",
+      });
+    } catch (error: any) {
+      console.error("Update custom question error:", error.message);
+      toast({
+        title: "Updating question failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Update user profile
+  const updateProfile = async (profile: UserProfile) => {
+    try {
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+
+      setIsLoading(true);
+
+      // Update user data in Supabase Auth
+      const { error: userUpdateError } = await supabase.auth.updateUser({
+        email: profile.email,
+        data: {
+          full_name: profile.fullName,
+          phone: profile.phone
+        }
+      });
+
+      if (userUpdateError) throw new Error(userUpdateError.message);
+
+      // If this is an agent, also update the agent profile
+      if (agentProfile) {
+        const { error: profileUpdateError } = await supabase
+          .from('agent_profiles')
+          .update({
+            name: profile.fullName,
+            email: profile.email,
+            phone: profile.phone
+          })
+          .eq('user_id', user.id);
+
+        if (profileUpdateError) throw new Error(profileUpdateError.message);
+
+        // Refresh the agent profile
+        await fetchAgentProfile(user.id);
+      }
+
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been updated successfully.",
+      });
+    } catch (error: any) {
+      console.error("Update profile error:", error.message);
+      toast({
+        title: "Update failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const value = {
     isAuthenticated,
     isLoading,
@@ -403,6 +608,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     logout,
     updateAgentProfile,
     createAgentProfile,
+    addCustomQuestion,       // Added missing method
+    deleteCustomQuestion,    // Added missing method
+    updateCustomQuestion,    // Added missing method
+    updateProfile,           // Added missing method
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
