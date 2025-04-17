@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useApplications } from "@/context/ApplicationContext";
 import MainLayout from "@/components/layout/MainLayout";
@@ -14,6 +14,17 @@ const Applications = () => {
   const { applications } = useApplications();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "all">("all");
+  
+  // Debug logging for checking applications
+  useEffect(() => {
+    console.log("Applications page - Current agent profile:", agentProfile);
+    console.log("Applications page - All applications:", applications);
+    
+    if (agentProfile) {
+      const agentApps = applications.filter(app => app.agentId === agentProfile.id);
+      console.log("Applications page - Filtered applications for agent:", agentApps);
+    }
+  }, [applications, agentProfile]);
 
   // Filter applications that belong to the current agent
   const agentApplications = agentProfile 

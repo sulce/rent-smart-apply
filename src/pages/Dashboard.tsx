@@ -1,5 +1,5 @@
 
-import React from "react";
+import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useApplications } from "@/context/ApplicationContext";
@@ -13,6 +13,18 @@ const Dashboard = () => {
   const { agentProfile } = useAuth();
   const { applications, isLoading } = useApplications();
   const navigate = useNavigate();
+
+  // Debug logging for applications and agent profile
+  useEffect(() => {
+    if (agentProfile) {
+      console.log("Current agent profile:", agentProfile);
+      console.log("Agent ID:", agentProfile.id);
+      console.log("All applications:", applications);
+      
+      const agentApps = applications.filter(app => app.agentId === agentProfile.id);
+      console.log("Agent applications:", agentApps);
+    }
+  }, [applications, agentProfile]);
 
   // Filter applications that belong to the current agent
   const agentApplications = agentProfile 

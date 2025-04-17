@@ -140,17 +140,26 @@ export const ApplicationProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const storedApplications = localStorage.getItem("applications");
       
       if (storedApplications) {
-        // Parse dates correctly
-        const parsedApplications = JSON.parse(storedApplications, (key, value) => {
-          if (key === "createdAt" || key === "updatedAt" || key === "uploadedAt") {
-            return new Date(value);
-          }
-          return value;
-        });
-        
-        setApplications(parsedApplications);
+        try {
+          // Parse dates correctly
+          const parsedApplications = JSON.parse(storedApplications, (key, value) => {
+            if (key === "createdAt" || key === "updatedAt" || key === "uploadedAt") {
+              return new Date(value);
+            }
+            return value;
+          });
+          
+          setApplications(parsedApplications);
+          console.log("Loaded applications from localStorage:", parsedApplications);
+        } catch (error) {
+          console.error("Error parsing stored applications:", error);
+          // Use sample data if parsing fails
+          setApplications(sampleApplications);
+          localStorage.setItem("applications", JSON.stringify(sampleApplications));
+        }
       } else {
         // Use sample data for the first load
+        console.log("No stored applications found, using sample data");
         setApplications(sampleApplications);
         localStorage.setItem("applications", JSON.stringify(sampleApplications));
       }
@@ -166,7 +175,11 @@ export const ApplicationProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   const getApplicationsByAgentId = (agentId: string): TenantApplication[] => {
-    return applications.filter(app => app.agentId === agentId);
+    console.log("Filtering applications for agent ID:", agentId);
+    console.log("Available applications:", applications);
+    const filtered = applications.filter(app => app.agentId === agentId);
+    console.log("Filtered applications:", filtered);
+    return filtered;
   };
 
   const createApplication = (applicationData: Omit<TenantApplication, "id" | "createdAt" | "updatedAt">): TenantApplication => {
@@ -177,9 +190,18 @@ export const ApplicationProvider: React.FC<{ children: React.ReactNode }> = ({ c
       updatedAt: new Date(),
     };
     
+    console.log("Creating new application:", newApplication);
+    
     const updatedApplications = [...applications, newApplication];
     setApplications(updatedApplications);
-    localStorage.setItem("applications", JSON.stringify(updatedApplications));
+    
+    // Store in localStorage
+    try {
+      localStorage.setItem("applications", JSON.stringify(updatedApplications));
+      console.log("Applications saved to localStorage, count:", updatedApplications.length);
+    } catch (error) {
+      console.error("Error saving applications to localStorage:", error);
+    }
     
     return newApplication;
   };

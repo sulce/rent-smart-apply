@@ -85,21 +85,44 @@ const TenantApplication = () => {
 
   // Load agent profile based on the slug
   useEffect(() => {
-    // Simulate fetching agent data
-    // In a real app, this would come from an API
     const fetchAgentBySlug = () => {
-      const storedAgents = localStorage.getItem("agentProfile");
+      // First check localStorage for agents
+      const storedAgents = localStorage.getItem("agentProfiles");
       
       if (storedAgents) {
-        const agentData = JSON.parse(storedAgents);
-        if (agentData.urlSlug === agentSlug) {
-          setAgent(agentData);
-          return;
+        try {
+          const agentProfiles = JSON.parse(storedAgents);
+          // If it's an array, find the agent with matching slug
+          if (Array.isArray(agentProfiles)) {
+            const foundAgent = agentProfiles.find(agent => agent.urlSlug === agentSlug);
+            if (foundAgent) {
+              setAgent(foundAgent);
+              console.log("Found agent from agentProfiles:", foundAgent);
+              return;
+            }
+          }
+        } catch (error) {
+          console.error("Error parsing agentProfiles:", error);
+        }
+      }
+      
+      // Check individual agent profile
+      const storedAgent = localStorage.getItem("agentProfile");
+      if (storedAgent) {
+        try {
+          const agentData = JSON.parse(storedAgent);
+          if (agentData.urlSlug === agentSlug) {
+            setAgent(agentData);
+            console.log("Found agent from agentProfile:", agentData);
+            return;
+          }
+        } catch (error) {
+          console.error("Error parsing agentProfile:", error);
         }
       }
       
       // If we can't find the agent, use a sample agent
-      setAgent({
+      const sampleAgent = {
         id: "agent-1",
         name: "Jane Smith",
         businessName: "Smith Real Estate",
@@ -109,7 +132,10 @@ const TenantApplication = () => {
         primaryColor: "#1a365d",
         urlSlug: agentSlug || "jane-smith",
         customQuestions: []
-      });
+      };
+      
+      console.log("Using sample agent:", sampleAgent);
+      setAgent(sampleAgent);
     };
     
     fetchAgentBySlug();
@@ -171,10 +197,14 @@ const TenantApplication = () => {
     setIsSubmitting(true);
     
     try {
-      // Create the application in our context
-      if (!agent) return;
+      if (!agent) {
+        console.error("No agent found for application submission");
+        return;
+      }
       
-      createApplication({
+      console.log("Creating application with agent ID:", agent.id);
+      
+      const newApplication = createApplication({
         agentId: agent.id,
         status: "pending",
         personalInfo: {
@@ -201,6 +231,8 @@ const TenantApplication = () => {
         documents: formData.documents,
       });
       
+      console.log("Application created successfully:", newApplication);
+      
       // Show success message and navigate to the confirmation screen
       setIsComplete(true);
       toast({
@@ -208,6 +240,7 @@ const TenantApplication = () => {
         description: "Your rental application has been successfully submitted.",
       });
     } catch (error) {
+      console.error("Error submitting application:", error);
       toast({
         title: "Submission Error",
         description: "There was an error submitting your application. Please try again.",
