@@ -11,10 +11,17 @@ import ApplicationCard from "@/components/application/ApplicationCard";
 import { useToast } from "@/hooks/use-toast";
 
 const Dashboard = () => {
-  const { agentProfile } = useAuth();
-  const { applications } = useApplications();
+  const { agentProfile, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { applications, isLoading: applicationsLoading } = useApplications();
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      navigate('/login');
+    }
+  }, [isAuthenticated, authLoading, navigate]);
 
   // Debug logging for applications and agent profile
   useEffect(() => {
@@ -27,6 +34,20 @@ const Dashboard = () => {
       console.log("Agent applications:", agentApps);
     }
   }, [applications, agentProfile]);
+
+  // Check if still loading
+  if (authLoading || applicationsLoading) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+            <p className="text-lg font-medium text-gray-700">Loading dashboard data...</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
 
   // Filter applications that belong to the current agent
   const agentApplications = agentProfile 
@@ -169,8 +190,11 @@ const Dashboard = () => {
             </Button>
           </div>
 
-          {applications.length === 0 ? (
-            <div className="text-center py-8">Loading applications...</div>
+          {applicationsLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
+              <p>Loading applications...</p>
+            </div>
           ) : agentApplications.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {agentApplications.slice(0, 6).map((application) => (

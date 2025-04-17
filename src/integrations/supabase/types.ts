@@ -9,7 +9,145 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      agent_profiles: {
+        Row: {
+          business_name: string
+          created_at: string
+          email: string
+          id: string
+          logo: string | null
+          name: string
+          phone: string | null
+          primary_color: string | null
+          secondary_color: string | null
+          updated_at: string
+          url_slug: string
+          user_id: string | null
+        }
+        Insert: {
+          business_name: string
+          created_at?: string
+          email: string
+          id?: string
+          logo?: string | null
+          name: string
+          phone?: string | null
+          primary_color?: string | null
+          secondary_color?: string | null
+          updated_at?: string
+          url_slug: string
+          user_id?: string | null
+        }
+        Update: {
+          business_name?: string
+          created_at?: string
+          email?: string
+          id?: string
+          logo?: string | null
+          name?: string
+          phone?: string | null
+          primary_color?: string | null
+          secondary_color?: string | null
+          updated_at?: string
+          url_slug?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      custom_questions: {
+        Row: {
+          agent_id: string
+          created_at: string
+          id: string
+          options: string[] | null
+          question_text: string
+          required: boolean | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          id?: string
+          options?: string[] | null
+          question_text: string
+          required?: boolean | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          id?: string
+          options?: string[] | null
+          question_text?: string
+          required?: boolean | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_questions_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_applications: {
+        Row: {
+          additional_info_request: string | null
+          agent_id: string
+          created_at: string
+          custom_answers: Json | null
+          documents: Json | null
+          employment_info: Json
+          id: string
+          personal_info: Json
+          rental_history: Json
+          status: string
+          tenant_references: Json
+          updated_at: string
+        }
+        Insert: {
+          additional_info_request?: string | null
+          agent_id: string
+          created_at?: string
+          custom_answers?: Json | null
+          documents?: Json | null
+          employment_info: Json
+          id?: string
+          personal_info: Json
+          rental_history: Json
+          status?: string
+          tenant_references: Json
+          updated_at?: string
+        }
+        Update: {
+          additional_info_request?: string | null
+          agent_id?: string
+          created_at?: string
+          custom_answers?: Json | null
+          documents?: Json | null
+          employment_info?: Json
+          id?: string
+          personal_info?: Json
+          rental_history?: Json
+          status?: string
+          tenant_references?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_applications_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

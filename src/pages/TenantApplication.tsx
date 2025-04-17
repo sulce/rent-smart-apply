@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useApplications } from "@/context/ApplicationContext";
@@ -97,69 +98,76 @@ const TenantApplication = () => {
         setIsLoading(true);
         console.log("Fetching agent with slug:", agentSlug);
         
-        // First check localStorage for all agents
-        const storedProfiles = localStorage.getItem("agentProfiles");
+        if (!agentSlug) {
+          throw new Error("Agent slug is missing");
+        }
         
-        if (storedProfiles) {
-          try {
-            const agentProfiles = JSON.parse(storedProfiles);
-            console.log("Found agent profiles:", agentProfiles);
-            
-            if (Array.isArray(agentProfiles) && agentProfiles.length > 0) {
-              const foundAgent = agentProfiles.find((agent: AgentProfile) => agent.urlSlug === agentSlug);
-              if (foundAgent) {
-                console.log("Found agent in agentProfiles:", foundAgent);
-                setAgent(foundAgent);
-                
-                // Set up custom questions if the agent has any
-                if (foundAgent.customQuestions?.length) {
-                  setFormData(prev => ({
-                    ...prev,
-                    customAnswers: foundAgent.customQuestions.map((q: CustomQuestion) => ({ 
-                      questionId: q.id, 
-                      answer: "" 
-                    }))
-                  }));
-                }
-                
-                setIsLoading(false);
-                return;
-              }
-            }
-          } catch (error) {
-            console.error("Error parsing agentProfiles:", error);
+        // Fetch agent from database by slug
+        const { data, error } = await supabase
+          .from('agent_profiles')
+          .select('*')
+          .eq('url_slug', agentSlug)
+          .single();
+        
+        if (error) {
+          console.error("Error fetching agent:", error.message);
+          throw new Error("Could not find agent with that URL");
+        }
+        
+        if (!data) {
+          throw new Error("Agent not found");
+        }
+        
+        console.log("Found agent in database:", data);
+        
+        // Transform to app format
+        const agentProfile: AgentProfile = {
+          id: data.id,
+          name: data.name,
+          businessName: data.business_name,
+          email: data.email,
+          phone: data.phone || "",
+          logo: data.logo,
+          primaryColor: data.primary_color || "#1a365d",
+          secondaryColor: data.secondary_color,
+          urlSlug: data.url_slug,
+          customQuestions: []
+        };
+        
+        // Fetch custom questions
+        const { data: questionsData, error: questionsError } = await supabase
+          .from('custom_questions')
+          .select('*')
+          .eq('agent_id', data.id);
+        
+        if (!questionsError && questionsData) {
+          console.log("Found custom questions:", questionsData);
+          
+          agentProfile.customQuestions = questionsData.map(q => ({
+            id: q.id,
+            questionText: q.question_text,
+            required: q.required || false,
+            type: q.type as "text" | "radio" | "checkbox" | "select",
+            options: q.options || []
+          }));
+          
+          // Set up custom questions in form data
+          if (agentProfile.customQuestions.length > 0) {
+            setFormData(prev => ({
+              ...prev,
+              customAnswers: agentProfile.customQuestions.map(q => ({ 
+                questionId: q.id, 
+                answer: "" 
+              }))
+            }));
           }
         }
         
-        // Check individual agent profile
-        const storedAgent = localStorage.getItem("agentProfile");
-        if (storedAgent) {
-          try {
-            const agentData = JSON.parse(storedAgent);
-            if (agentData.urlSlug === agentSlug) {
-              console.log("Found agent in agentProfile:", agentData);
-              setAgent(agentData);
-              
-              // Set up custom questions if the agent has any
-              if (agentData.customQuestions?.length) {
-                setFormData(prev => ({
-                  ...prev,
-                  customAnswers: agentData.customQuestions.map((q: CustomQuestion) => ({ 
-                    questionId: q.id, 
-                    answer: "" 
-                  }))
-                }));
-              }
-              
-              setIsLoading(false);
-              return;
-            }
-          } catch (error) {
-            console.error("Error parsing agentProfile:", error);
-          }
-        }
+        setAgent(agentProfile);
+      } catch (error: any) {
+        console.error("Error in fetchAgentBySlug:", error.message);
         
-        // If not found anywhere, use a default agent
+        // Create a default agent profile as fallback
         const defaultAgent: AgentProfile = {
           id: `agent-default-${Date.now()}`,
           name: "Default Agent",
@@ -172,11 +180,14 @@ const TenantApplication = () => {
           customQuestions: []
         };
         
-        console.log("Using default agent:", defaultAgent);
         setAgent(defaultAgent);
-        setIsLoading(false);
-      } catch (error) {
-        console.error("Error fetching agent:", error);
+        
+        toast({
+          title: "Agent not found",
+          description: "Using default agent information. The requested agent profile could not be found.",
+          variant: "destructive"
+        });
+      } finally {
         setIsLoading(false);
       }
     };
@@ -263,7 +274,7 @@ const TenantApplication = () => {
       
       console.log("Creating application with agent ID:", agent.id);
       
-      const newApplication = createApplication({
+      createApplication({
         agentId: agent.id,
         status: "pending",
         personalInfo: {
@@ -289,24 +300,33 @@ const TenantApplication = () => {
         references: formData.references,
         documents: formData.documents,
         customAnswers: formData.customAnswers
+      })
+      .then(newApplication => {
+        console.log("Application created successfully:", newApplication);
+        
+        // Show success message and navigate to the confirmation screen
+        setIsComplete(true);
+        toast({
+          title: "Application Submitted",
+          description: "Your rental application has been successfully submitted.",
+        });
+      })
+      .catch(error => {
+        console.error("Error in application creation:", error);
+        toast({
+          title: "Submission Error",
+          description: error.message || "There was an error submitting your application. Please try again.",
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
       });
-      
-      console.log("Application created successfully:", newApplication);
-      
-      // Show success message and navigate to the confirmation screen
-      setIsComplete(true);
-      toast({
-        title: "Application Submitted",
-        description: "Your rental application has been successfully submitted.",
-      });
-    } catch (error) {
-      console.error("Error submitting application:", error);
+    } catch (error: any) {
+      console.error("Error submitting application:", error.message);
       toast({
         title: "Submission Error",
-        description: "There was an error submitting your application. Please try again.",
+        description: error.message || "There was an error submitting your application. Please try again.",
         variant: "destructive",
       });
-    } finally {
       setIsSubmitting(false);
     }
   };

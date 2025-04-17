@@ -1,266 +1,227 @@
 
-import React, { createContext, useState, useContext, useEffect } from "react";
-import { TenantApplication, ApplicationStatus } from "../types";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { TenantApplication, Document, ApplicationStatus } from "@/types";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "./AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ApplicationContextType {
   applications: TenantApplication[];
   isLoading: boolean;
-  getApplicationById: (id: string) => TenantApplication | undefined;
-  getApplicationsByAgentId: (agentId: string) => TenantApplication[];
-  createApplication: (application: Omit<TenantApplication, "id" | "createdAt" | "updatedAt">) => TenantApplication;
-  updateApplicationStatus: (id: string, status: ApplicationStatus) => boolean;
-  updateApplication: (id: string, data: Partial<TenantApplication>) => boolean;
+  createApplication: (application: Omit<TenantApplication, "id" | "createdAt" | "updatedAt">) => Promise<TenantApplication>;
+  getApplication: (id: string) => TenantApplication | undefined;
+  updateApplication: (id: string, data: Partial<TenantApplication>) => void;
+  deleteApplication: (id: string) => void;
 }
 
-// Sample application data for the MVP
-const sampleApplications: TenantApplication[] = [
-  {
-    id: "app-1",
-    agentId: "agent-1",
-    status: "pending",
-    createdAt: new Date("2023-11-10T10:00:00Z"),
-    updatedAt: new Date("2023-11-10T10:00:00Z"),
-    personalInfo: {
-      fullName: "John Doe",
-      email: "john@example.com",
-      phone: "(555) 987-6543",
-      dateOfBirth: "1988-04-15",
-    },
-    employmentInfo: {
-      employer: "Tech Solutions Inc.",
-      position: "Software Developer",
-      income: "85000",
-      employmentLength: "3 years",
-      employerContact: "HR Dept: (555) 123-4567",
-    },
-    rentalHistory: {
-      currentAddress: "123 Main St, Apt 4B, Cityville, ST 12345",
-      currentLandlord: "Property Management LLC",
-      currentLandlordPhone: "(555) 456-7890",
-      lengthOfStay: "2 years",
-      reasonForLeaving: "Relocating for new job",
-    },
-    references: [
-      {
-        name: "Jane Smith",
-        relationship: "Former Colleague",
-        phone: "(555) 222-3333",
-      },
-      {
-        name: "Michael Johnson",
-        relationship: "Personal Friend",
-        phone: "(555) 444-5555",
-      },
-    ],
-    documents: [
-      {
-        id: "doc-1",
-        name: "ID Document",
-        type: "image/jpeg",
-        url: "/placeholder.svg",
-        uploadedAt: new Date("2023-11-10T10:00:00Z"),
-      },
-      {
-        id: "doc-2",
-        name: "Proof of Income",
-        type: "application/pdf",
-        url: "/placeholder.svg",
-        uploadedAt: new Date("2023-11-10T10:00:00Z"),
-      },
-    ],
-    customAnswers: [
-      {
-        questionId: "cq1",
-        answer: "No"
-      },
-      {
-        questionId: "cq2",
-        answer: "2 years minimum"
-      }
-    ]
-  },
-  {
-    id: "app-2",
-    agentId: "agent-1",
-    status: "approved",
-    createdAt: new Date("2023-10-05T14:30:00Z"),
-    updatedAt: new Date("2023-10-08T09:15:00Z"),
-    personalInfo: {
-      fullName: "Sarah Johnson",
-      email: "sarah@example.com",
-      phone: "(555) 123-7890",
-    },
-    employmentInfo: {
-      employer: "City Hospital",
-      position: "Registered Nurse",
-      income: "72000",
-      employmentLength: "5 years",
-    },
-    rentalHistory: {
-      currentAddress: "456 Oak Ave, Townsville, ST 67890",
-      lengthOfStay: "4 years",
-    },
-    references: [
-      {
-        name: "Robert Smith",
-        relationship: "Supervisor",
-        phone: "(555) 888-9999",
-      }
-    ],
-    documents: [
-      {
-        id: "doc-3",
-        name: "Driver's License",
-        type: "image/png",
-        url: "/placeholder.svg",
-        uploadedAt: new Date("2023-10-05T14:30:00Z"),
-      }
-    ]
-  }
-];
+const ApplicationContext = createContext<ApplicationContextType | undefined>(undefined);
 
-// Create the context with default values
-const ApplicationContext = createContext<ApplicationContextType>({
-  applications: [],
-  isLoading: true,
-  getApplicationById: () => undefined,
-  getApplicationsByAgentId: () => [],
-  createApplication: () => ({} as TenantApplication),
-  updateApplicationStatus: () => false,
-  updateApplication: () => false,
-});
-
-export const ApplicationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const ApplicationProvider = ({ children }: { children: ReactNode }) => {
   const [applications, setApplications] = useState<TenantApplication[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const { user, agentProfile, isAuthenticated } = useAuth();
+  const { toast } = useToast();
 
+  // Load applications from database when authenticated
   useEffect(() => {
-    // Load applications from localStorage or use sample data
-    const loadApplications = () => {
-      const storedApplications = localStorage.getItem("applications");
-      
-      if (storedApplications) {
+    const loadApplications = async () => {
+      if (isAuthenticated && user) {
+        setIsLoading(true);
         try {
-          // Parse dates correctly
-          const parsedApplications = JSON.parse(storedApplications, (key, value) => {
-            if (key === "createdAt" || key === "updatedAt" || key === "uploadedAt") {
-              return new Date(value);
-            }
-            return value;
-          });
+          const { data, error } = await supabase
+            .from('tenant_applications')
+            .select('*');
           
-          setApplications(parsedApplications);
-          console.log("Loaded applications from localStorage:", parsedApplications);
-        } catch (error) {
-          console.error("Error parsing stored applications:", error);
-          // Use sample data if parsing fails
-          setApplications(sampleApplications);
-          localStorage.setItem("applications", JSON.stringify(sampleApplications));
+          if (error) throw new Error(error.message);
+          
+          if (data) {
+            console.log("Loaded applications from DB:", data);
+            
+            // Transform from DB format to app format
+            const transformedData: TenantApplication[] = data.map(app => ({
+              id: app.id,
+              agentId: app.agent_id,
+              status: app.status as ApplicationStatus,
+              createdAt: new Date(app.created_at),
+              updatedAt: new Date(app.updated_at),
+              personalInfo: app.personal_info,
+              employmentInfo: app.employment_info,
+              rentalHistory: app.rental_history,
+              references: app.tenant_references,
+              documents: app.documents || [],
+              customAnswers: app.custom_answers || [],
+              additionalInfoRequest: app.additional_info_request
+            }));
+            
+            setApplications(transformedData);
+          }
+        } catch (error: any) {
+          console.error("Error loading applications:", error.message);
+          toast({
+            title: "Error loading applications",
+            description: error.message,
+            variant: "destructive",
+          });
+        } finally {
+          setIsLoading(false);
         }
       } else {
-        // Use sample data for the first load
-        console.log("No stored applications found, using sample data");
-        setApplications(sampleApplications);
-        localStorage.setItem("applications", JSON.stringify(sampleApplications));
+        setIsLoading(false);
       }
-      
-      setIsLoading(false);
     };
     
     loadApplications();
-  }, []);
+  }, [isAuthenticated, user]);
 
-  const getApplicationById = (id: string): TenantApplication | undefined => {
+  // Create new application in database
+  const createApplication = async (applicationData: Omit<TenantApplication, "id" | "createdAt" | "updatedAt">) => {
+    try {
+      console.log("Creating application:", applicationData);
+      
+      // Transform from app format to DB format
+      const dbApplication = {
+        agent_id: applicationData.agentId,
+        status: applicationData.status,
+        personal_info: applicationData.personalInfo,
+        employment_info: applicationData.employmentInfo,
+        rental_history: applicationData.rentalHistory,
+        tenant_references: applicationData.references,
+        documents: applicationData.documents || [],
+        custom_answers: applicationData.customAnswers || [],
+        additional_info_request: applicationData.additionalInfoRequest
+      };
+      
+      // Insert into database
+      const { data, error } = await supabase
+        .from('tenant_applications')
+        .insert(dbApplication)
+        .select()
+        .single();
+      
+      if (error) throw new Error(error.message);
+      
+      // Transform back to app format
+      const newApplication: TenantApplication = {
+        id: data.id,
+        agentId: data.agent_id,
+        status: data.status as ApplicationStatus,
+        createdAt: new Date(data.created_at),
+        updatedAt: new Date(data.updated_at),
+        personalInfo: data.personal_info,
+        employmentInfo: data.employment_info,
+        rentalHistory: data.rental_history,
+        references: data.tenant_references,
+        documents: data.documents || [],
+        customAnswers: data.custom_answers || [],
+        additionalInfoRequest: data.additional_info_request
+      };
+      
+      setApplications(prev => [...prev, newApplication]);
+      
+      return newApplication;
+    } catch (error: any) {
+      console.error("Error creating application:", error.message);
+      toast({
+        title: "Error creating application",
+        description: error.message,
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
+  // Get application by ID
+  const getApplication = (id: string) => {
     return applications.find(app => app.id === id);
   };
 
-  const getApplicationsByAgentId = (agentId: string): TenantApplication[] => {
-    console.log("Filtering applications for agent ID:", agentId);
-    console.log("Available applications:", applications);
-    const filtered = applications.filter(app => app.agentId === agentId);
-    console.log("Filtered applications:", filtered);
-    return filtered;
-  };
-
-  const createApplication = (applicationData: Omit<TenantApplication, "id" | "createdAt" | "updatedAt">): TenantApplication => {
-    const newApplication: TenantApplication = {
-      ...applicationData,
-      id: `app-${Date.now()}`,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    
-    console.log("Creating new application:", newApplication);
-    
-    const updatedApplications = [...applications, newApplication];
-    setApplications(updatedApplications);
-    
-    // Store in localStorage
+  // Update application in database
+  const updateApplication = async (id: string, applicationData: Partial<TenantApplication>) => {
     try {
-      localStorage.setItem("applications", JSON.stringify(updatedApplications));
-      console.log("Applications saved to localStorage, count:", updatedApplications.length);
-    } catch (error) {
-      console.error("Error saving applications to localStorage:", error);
-    }
-    
-    return newApplication;
-  };
-
-  const updateApplicationStatus = (id: string, status: ApplicationStatus): boolean => {
-    try {
-      const appIndex = applications.findIndex(app => app.id === id);
-      if (appIndex === -1) return false;
+      // Transform from app format to DB format
+      const dbApplication: any = {};
       
-      const updatedApplications = [...applications];
-      updatedApplications[appIndex] = {
-        ...updatedApplications[appIndex],
-        status,
-        updatedAt: new Date()
-      };
+      if (applicationData.status !== undefined) dbApplication.status = applicationData.status;
+      if (applicationData.personalInfo !== undefined) dbApplication.personal_info = applicationData.personalInfo;
+      if (applicationData.employmentInfo !== undefined) dbApplication.employment_info = applicationData.employmentInfo;
+      if (applicationData.rentalHistory !== undefined) dbApplication.rental_history = applicationData.rentalHistory;
+      if (applicationData.references !== undefined) dbApplication.tenant_references = applicationData.references;
+      if (applicationData.documents !== undefined) dbApplication.documents = applicationData.documents;
+      if (applicationData.customAnswers !== undefined) dbApplication.custom_answers = applicationData.customAnswers;
+      if (applicationData.additionalInfoRequest !== undefined) dbApplication.additional_info_request = applicationData.additionalInfoRequest;
       
-      setApplications(updatedApplications);
-      localStorage.setItem("applications", JSON.stringify(updatedApplications));
-      return true;
-    } catch (error) {
-      console.error("Error updating application status:", error);
-      return false;
+      // Update in database
+      const { error } = await supabase
+        .from('tenant_applications')
+        .update(dbApplication)
+        .eq('id', id);
+      
+      if (error) throw new Error(error.message);
+      
+      // Update in state
+      setApplications(prev => prev.map(app => 
+        app.id === id 
+          ? { ...app, ...applicationData, updatedAt: new Date() } 
+          : app
+      ));
+      
+      toast({
+        title: "Application updated",
+        description: "The application has been updated successfully.",
+      });
+    } catch (error: any) {
+      console.error("Error updating application:", error.message);
+      toast({
+        title: "Error updating application",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
 
-  const updateApplication = (id: string, data: Partial<TenantApplication>): boolean => {
+  // Delete application from database
+  const deleteApplication = async (id: string) => {
     try {
-      const appIndex = applications.findIndex(app => app.id === id);
-      if (appIndex === -1) return false;
+      const { error } = await supabase
+        .from('tenant_applications')
+        .delete()
+        .eq('id', id);
       
-      const updatedApplications = [...applications];
-      updatedApplications[appIndex] = {
-        ...updatedApplications[appIndex],
-        ...data,
-        updatedAt: new Date()
-      };
+      if (error) throw new Error(error.message);
       
-      setApplications(updatedApplications);
-      localStorage.setItem("applications", JSON.stringify(updatedApplications));
-      return true;
-    } catch (error) {
-      console.error("Error updating application:", error);
-      return false;
+      // Remove from state
+      setApplications(prev => prev.filter(app => app.id !== id));
+      
+      toast({
+        title: "Application deleted",
+        description: "The application has been deleted successfully.",
+      });
+    } catch (error: any) {
+      console.error("Error deleting application:", error.message);
+      toast({
+        title: "Error deleting application",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
 
-  return (
-    <ApplicationContext.Provider value={{
-      applications,
-      isLoading,
-      getApplicationById,
-      getApplicationsByAgentId,
-      createApplication,
-      updateApplicationStatus,
-      updateApplication
-    }}>
-      {children}
-    </ApplicationContext.Provider>
-  );
+  const value = {
+    applications,
+    isLoading,
+    createApplication,
+    getApplication,
+    updateApplication,
+    deleteApplication,
+  };
+
+  return <ApplicationContext.Provider value={value}>{children}</ApplicationContext.Provider>;
 };
 
-export const useApplications = () => useContext(ApplicationContext);
+export const useApplications = () => {
+  const context = useContext(ApplicationContext);
+  if (context === undefined) {
+    throw new Error("useApplications must be used within an ApplicationProvider");
+  }
+  return context;
+};

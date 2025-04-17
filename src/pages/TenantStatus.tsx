@@ -1,27 +1,91 @@
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useApplications } from "@/context/ApplicationContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { User, FileText, Clock, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 import StatusBadge from "@/components/ui/status-badge";
 import { format } from "date-fns";
-import { Document as DocumentType } from "@/types";
+import { Document as DocumentType, TenantApplication } from "@/types";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 
 const TenantStatus = () => {
   const { id } = useParams<{ id: string }>();
-  const { applications } = useApplications();
-  const application = applications.find(app => app.id === id);
+  const [application, setApplication] = useState<TenantApplication | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   
-  if (!application) {
+  // Fetch application directly from database
+  useEffect(() => {
+    const fetchApplication = async () => {
+      if (!id) {
+        setError("Application ID is missing");
+        setIsLoading(false);
+        return;
+      }
+      
+      try {
+        setIsLoading(true);
+        
+        const { data, error } = await supabase
+          .from('tenant_applications')
+          .select('*')
+          .eq('id', id)
+          .single();
+        
+        if (error) throw new Error(error.message);
+        
+        if (!data) {
+          throw new Error("Application not found");
+        }
+        
+        // Transform to app format
+        const appData: TenantApplication = {
+          id: data.id,
+          agentId: data.agent_id,
+          status: data.status as any,
+          createdAt: new Date(data.created_at),
+          updatedAt: new Date(data.updated_at),
+          personalInfo: data.personal_info,
+          employmentInfo: data.employment_info,
+          rentalHistory: data.rental_history,
+          references: data.tenant_references,
+          documents: data.documents || [],
+          customAnswers: data.custom_answers || [],
+          additionalInfoRequest: data.additional_info_request
+        };
+        
+        setApplication(appData);
+      } catch (error: any) {
+        console.error("Error fetching application:", error.message);
+        setError(error.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchApplication();
+  }, [id]);
+  
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p className="text-lg font-medium text-gray-700">Loading application status...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (error || !application) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center p-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Application Not Found</h1>
           <p className="text-gray-600 mb-6">
-            The application you're looking for doesn't exist or is no longer available.
+            {error || "The application you're looking for doesn't exist or is no longer available."}
           </p>
           <Link to="/" className="text-blue-600 hover:underline">
             Return to Home
@@ -155,15 +219,14 @@ const TenantStatus = () => {
                 </TabsContent>
               </Tabs>
               
-              {status === "info-requested" && (
+              {status === "info-requested" && application.additionalInfoRequest && (
                 <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-md">
                   <h3 className="font-medium text-amber-800 flex items-center mb-2">
                     <AlertTriangle className="h-5 w-5 mr-2" />
                     Additional Information Requested
                   </h3>
                   <p className="text-amber-700 text-sm">
-                    The property manager needs additional information for your application. 
-                    Please check your email for detailed instructions on what is needed and how to provide it.
+                    {application.additionalInfoRequest}
                   </p>
                 </div>
               )}

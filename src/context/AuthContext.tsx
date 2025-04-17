@@ -1,318 +1,413 @@
 
-import React, { createContext, useState, useContext, useEffect } from "react";
-import { AgentProfile, CustomQuestion } from "../types";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+import { AgentProfile, UserRole } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  agentProfile: AgentProfile | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
-  signup: (email: string, password: string, name: string, businessName: string) => Promise<boolean>;
-  updateProfile: (profile: Partial<AgentProfile>) => Promise<boolean>;
-  addCustomQuestion: (question: CustomQuestion) => Promise<boolean>;
-  deleteCustomQuestion: (questionId: string) => Promise<boolean>;
-  updateCustomQuestion: (question: CustomQuestion) => Promise<boolean>;
+  user: User | null;
+  session: Session | null;
+  agentProfile: AgentProfile | null;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  updateAgentProfile: (profileData: Partial<AgentProfile>) => Promise<void>;
+  createAgentProfile: (profileData: Omit<AgentProfile, "id">) => Promise<void>;
 }
 
-// Create the context with default values
-const AuthContext = createContext<AuthContextType>({
-  isAuthenticated: false,
-  agentProfile: null,
-  isLoading: true,
-  login: async () => false,
-  logout: () => {},
-  signup: async () => false,
-  updateProfile: async () => false,
-  addCustomQuestion: async () => false,
-  deleteCustomQuestion: async () => false,
-  updateCustomQuestion: async () => false,
-});
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Sample agent data for the MVP
-const sampleAgentData: AgentProfile = {
-  id: "agent-1",
-  name: "Jane Smith",
-  businessName: "Smith Real Estate",
-  email: "jane@smithrealestate.com",
-  phone: "(555) 123-4567",
-  logo: "/placeholder.svg",
-  primaryColor: "#1a365d",
-  urlSlug: "jane-smith",
-  customQuestions: [
-    {
-      id: "cq1",
-      questionText: "Do you have any pets?",
-      required: true,
-      type: "radio",
-      options: ["Yes", "No"]
-    },
-    {
-      id: "cq2",
-      questionText: "How long do you plan to stay at this property?",
-      required: false,
-      type: "text"
-    }
-  ]
-};
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [agentProfile, setAgentProfile] = useState<AgentProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [agentProfile, setAgentProfile] = useState<AgentProfile | null>(null);
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
+  // Initialize authentication state
   useEffect(() => {
-    // Check for existing session on mount
-    const checkAuth = async () => {
-      try {
-        setIsLoading(true);
+    console.log("Setting up auth listener");
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, currentSession) => {
+        console.log("Auth state changed:", event, currentSession?.user?.id);
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
+        setIsAuthenticated(!!currentSession);
         
-        // First check local storage for stored agent profile
-        const storedAuth = localStorage.getItem("isAuthenticated");
-        const storedProfile = localStorage.getItem("agentProfile");
-        
-        if (storedAuth === "true" && storedProfile) {
-          const parsedProfile = JSON.parse(storedProfile);
-          console.log("Found stored agent profile:", parsedProfile);
-          setIsAuthenticated(true);
-          setAgentProfile(parsedProfile);
-          
-          // Store in agentProfiles array for other components to access
-          const agentProfiles = JSON.parse(localStorage.getItem("agentProfiles") || "[]");
-          
-          // Update or add the agent profile
-          const existingIndex = agentProfiles.findIndex((p: AgentProfile) => p.id === parsedProfile.id);
-          if (existingIndex >= 0) {
-            agentProfiles[existingIndex] = parsedProfile;
-          } else {
-            agentProfiles.push(parsedProfile);
-          }
-          
-          localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
+        // Fetch agent profile if user is authenticated, but use setTimeout to avoid Supabase deadlock
+        if (currentSession?.user) {
+          setTimeout(() => {
+            fetchAgentProfile(currentSession.user.id);
+          }, 0);
         } else {
-          console.log("No stored auth found");
+          setAgentProfile(null);
         }
-      } catch (error) {
-        console.error("Error checking auth:", error);
-      } finally {
+      }
+    );
+
+    // Then check for existing session
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      console.log("Got initial session:", currentSession?.user?.id);
+      setSession(currentSession);
+      setUser(currentSession?.user ?? null);
+      setIsAuthenticated(!!currentSession);
+      
+      // Fetch agent profile if there's an existing session
+      if (currentSession?.user) {
+        fetchAgentProfile(currentSession.user.id);
+      } else {
         setIsLoading(false);
       }
+    });
+
+    return () => {
+      subscription.unsubscribe();
     };
-    
-    checkAuth();
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    // For MVP, we'll simulate login with sample data
+  // Fetch agent profile from database
+  const fetchAgentProfile = async (userId: string) => {
     try {
-      setIsLoading(true);
+      console.log("Fetching agent profile for user:", userId);
+      const { data, error } = await supabase
+        .from('agent_profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
       
-      // Simple validation
-      if (email === "demo@example.com" && password === "password") {
-        setIsAuthenticated(true);
-        setAgentProfile(sampleAgentData);
+      if (error) {
+        console.error("Error fetching agent profile:", error.message);
+        setAgentProfile(null);
+      } else if (data) {
+        console.log("Fetched agent profile:", data);
+        // Transform from DB format to app format
+        const profile: AgentProfile = {
+          id: data.id,
+          name: data.name,
+          businessName: data.business_name,
+          email: data.email,
+          phone: data.phone || '',
+          logo: data.logo || undefined,
+          primaryColor: data.primary_color || '#1a365d',
+          secondaryColor: data.secondary_color || undefined,
+          urlSlug: data.url_slug,
+          customQuestions: [] // We'll fetch these separately
+        };
         
-        // Store in localStorage for persistence
-        localStorage.setItem("isAuthenticated", "true");
-        localStorage.setItem("agentProfile", JSON.stringify(sampleAgentData));
+        // Fetch custom questions
+        const { data: questionsData, error: questionsError } = await supabase
+          .from('custom_questions')
+          .select('*')
+          .eq('agent_id', data.id);
         
-        // Add to agentProfiles array
-        const agentProfiles = [sampleAgentData];
-        localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
+        if (!questionsError && questionsData) {
+          console.log("Fetched custom questions:", questionsData);
+          profile.customQuestions = questionsData.map(q => ({
+            id: q.id,
+            questionText: q.question_text,
+            required: q.required || false,
+            type: q.type as "text" | "radio" | "checkbox" | "select",
+            options: q.options || []
+          }));
+        }
         
-        return true;
+        setAgentProfile(profile);
       }
-      
-      return false;
-    } catch (error) {
-      console.error("Login error:", error);
-      return false;
+    } catch (error: any) {
+      console.error("Error in fetchAgentProfile:", error.message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const signup = async (
-    email: string, 
-    password: string, 
-    name: string, 
-    businessName: string
-  ): Promise<boolean> => {
+  // Login with email and password
+  const login = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      
-      // For MVP, create a new agent profile
-      const newAgent: AgentProfile = {
-        id: `agent-${Date.now()}`,
-        name,
-        businessName,
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
-        phone: "",
-        urlSlug: name.toLowerCase().replace(/\s+/g, '-'),
-        customQuestions: []
+        password,
+      });
+
+      if (error) throw new Error(error.message);
+      
+      toast({
+        title: "Login successful",
+        description: "You have been successfully logged in.",
+      });
+      
+      navigate("/dashboard");
+    } catch (error: any) {
+      console.error("Login error:", error.message);
+      toast({
+        title: "Login failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Sign up with email and password
+  const signup = async (email: string, password: string) => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (error) throw new Error(error.message);
+      
+      toast({
+        title: "Signup successful",
+        description: "Your account has been created. Please check your email for verification.",
+      });
+      
+      navigate("/setup-profile");
+    } catch (error: any) {
+      console.error("Signup error:", error.message);
+      toast({
+        title: "Signup failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Logout
+  const logout = async () => {
+    try {
+      setIsLoading(true);
+      await supabase.auth.signOut();
+      
+      setUser(null);
+      setSession(null);
+      setAgentProfile(null);
+      setIsAuthenticated(false);
+      
+      toast({
+        title: "Logout successful",
+        description: "You have been successfully logged out.",
+      });
+      
+      navigate("/login");
+    } catch (error: any) {
+      console.error("Logout error:", error.message);
+      toast({
+        title: "Logout failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Update agent profile
+  const updateAgentProfile = async (profileData: Partial<AgentProfile>) => {
+    try {
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+      
+      if (!agentProfile) {
+        throw new Error("Agent profile not found");
+      }
+
+      setIsLoading(true);
+      
+      // Transform to DB format
+      const dbProfileData: any = {};
+      
+      if (profileData.name !== undefined) dbProfileData.name = profileData.name;
+      if (profileData.businessName !== undefined) dbProfileData.business_name = profileData.businessName;
+      if (profileData.email !== undefined) dbProfileData.email = profileData.email;
+      if (profileData.phone !== undefined) dbProfileData.phone = profileData.phone;
+      if (profileData.logo !== undefined) dbProfileData.logo = profileData.logo;
+      if (profileData.primaryColor !== undefined) dbProfileData.primary_color = profileData.primaryColor;
+      if (profileData.secondaryColor !== undefined) dbProfileData.secondary_color = profileData.secondaryColor;
+      if (profileData.urlSlug !== undefined) dbProfileData.url_slug = profileData.urlSlug;
+      
+      // Update profile in database
+      const { error } = await supabase
+        .from('agent_profiles')
+        .update(dbProfileData)
+        .eq('id', agentProfile.id);
+      
+      if (error) throw new Error(error.message);
+      
+      // Update custom questions if provided
+      if (profileData.customQuestions) {
+        // Get existing questions
+        const { data: existingQuestions, error: fetchError } = await supabase
+          .from('custom_questions')
+          .select('id')
+          .eq('agent_id', agentProfile.id);
+        
+        if (fetchError) throw new Error(fetchError.message);
+        
+        const existingIds = existingQuestions?.map(q => q.id) || [];
+        const newQuestionIds = profileData.customQuestions.map(q => q.id).filter(id => id);
+        
+        // Delete questions that are no longer in the list
+        const idsToDelete = existingIds.filter(id => !newQuestionIds.includes(id));
+        if (idsToDelete.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('custom_questions')
+            .delete()
+            .in('id', idsToDelete);
+          
+          if (deleteError) throw new Error(deleteError.message);
+        }
+        
+        // Update or insert questions
+        for (const question of profileData.customQuestions) {
+          const dbQuestion = {
+            agent_id: agentProfile.id,
+            question_text: question.questionText,
+            required: question.required || false,
+            type: question.type,
+            options: question.options || []
+          };
+          
+          if (question.id && existingIds.includes(question.id)) {
+            // Update existing question
+            const { error: updateError } = await supabase
+              .from('custom_questions')
+              .update(dbQuestion)
+              .eq('id', question.id);
+            
+            if (updateError) throw new Error(updateError.message);
+          } else {
+            // Insert new question
+            const { error: insertError } = await supabase
+              .from('custom_questions')
+              .insert(dbQuestion);
+            
+            if (insertError) throw new Error(insertError.message);
+          }
+        }
+      }
+      
+      // Refresh profile data
+      await fetchAgentProfile(user.id);
+      
+      toast({
+        title: "Profile updated",
+        description: "Your agent profile has been updated successfully.",
+      });
+    } catch (error: any) {
+      console.error("Update profile error:", error.message);
+      toast({
+        title: "Update failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Create agent profile
+  const createAgentProfile = async (profileData: Omit<AgentProfile, "id">) => {
+    try {
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+      
+      setIsLoading(true);
+      
+      // Transform to DB format
+      const dbProfileData = {
+        user_id: user.id,
+        name: profileData.name,
+        business_name: profileData.businessName,
+        email: profileData.email,
+        phone: profileData.phone,
+        logo: profileData.logo,
+        primary_color: profileData.primaryColor,
+        secondary_color: profileData.secondaryColor,
+        url_slug: profileData.urlSlug,
       };
       
-      setIsAuthenticated(true);
-      setAgentProfile(newAgent);
+      // Insert profile into database
+      const { data, error } = await supabase
+        .from('agent_profiles')
+        .insert(dbProfileData)
+        .select()
+        .single();
       
-      // Store in localStorage
-      localStorage.setItem("isAuthenticated", "true");
-      localStorage.setItem("agentProfile", JSON.stringify(newAgent));
+      if (error) throw new Error(error.message);
       
-      // Add to agentProfiles array
-      const storedProfiles = localStorage.getItem("agentProfiles");
-      let agentProfiles = storedProfiles ? JSON.parse(storedProfiles) : [];
-      agentProfiles.push(newAgent);
-      localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
+      // Insert custom questions if any
+      if (profileData.customQuestions && profileData.customQuestions.length > 0) {
+        const dbQuestions = profileData.customQuestions.map(q => ({
+          agent_id: data.id,
+          question_text: q.questionText,
+          required: q.required || false,
+          type: q.type,
+          options: q.options || []
+        }));
+        
+        const { error: questionsError } = await supabase
+          .from('custom_questions')
+          .insert(dbQuestions);
+        
+        if (questionsError) throw new Error(questionsError.message);
+      }
       
-      return true;
-    } catch (error) {
-      console.error("Signup error:", error);
-      return false;
+      // Refresh profile data
+      await fetchAgentProfile(user.id);
+      
+      toast({
+        title: "Profile created",
+        description: "Your agent profile has been created successfully.",
+      });
+      
+      navigate("/dashboard");
+    } catch (error: any) {
+      console.error("Create profile error:", error.message);
+      toast({
+        title: "Profile creation failed",
+        description: error.message,
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const logout = () => {
-    setIsAuthenticated(false);
-    setAgentProfile(null);
-    localStorage.removeItem("isAuthenticated");
-    localStorage.removeItem("agentProfile");
+  const value = {
+    isAuthenticated,
+    isLoading,
+    user,
+    session,
+    agentProfile,
+    login,
+    signup,
+    logout,
+    updateAgentProfile,
+    createAgentProfile,
   };
 
-  const updateProfile = async (profile: Partial<AgentProfile>): Promise<boolean> => {
-    try {
-      if (!agentProfile) return false;
-      
-      const updatedProfile = { ...agentProfile, ...profile };
-      setAgentProfile(updatedProfile);
-      localStorage.setItem("agentProfile", JSON.stringify(updatedProfile));
-      
-      // Update in agentProfiles array
-      const storedProfiles = localStorage.getItem("agentProfiles");
-      if (storedProfiles) {
-        const agentProfiles = JSON.parse(storedProfiles);
-        const index = agentProfiles.findIndex((p: AgentProfile) => p.id === updatedProfile.id);
-        if (index >= 0) {
-          agentProfiles[index] = updatedProfile;
-        } else {
-          agentProfiles.push(updatedProfile);
-        }
-        localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
-      }
-      
-      return true;
-    } catch (error) {
-      console.error("Update profile error:", error);
-      return false;
-    }
-  };
-
-  // New methods for handling custom questions
-  const addCustomQuestion = async (question: CustomQuestion): Promise<boolean> => {
-    try {
-      if (!agentProfile) return false;
-      
-      const updatedQuestions = [...(agentProfile.customQuestions || []), question];
-      const updatedProfile = { ...agentProfile, customQuestions: updatedQuestions };
-      
-      setAgentProfile(updatedProfile);
-      localStorage.setItem("agentProfile", JSON.stringify(updatedProfile));
-      
-      // Update in agentProfiles array
-      const storedProfiles = localStorage.getItem("agentProfiles");
-      if (storedProfiles) {
-        const agentProfiles = JSON.parse(storedProfiles);
-        const index = agentProfiles.findIndex((p: AgentProfile) => p.id === updatedProfile.id);
-        if (index >= 0) {
-          agentProfiles[index] = updatedProfile;
-        }
-        localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
-      }
-      
-      return true;
-    } catch (error) {
-      console.error("Add custom question error:", error);
-      return false;
-    }
-  };
-  
-  const deleteCustomQuestion = async (questionId: string): Promise<boolean> => {
-    try {
-      if (!agentProfile || !agentProfile.customQuestions) return false;
-      
-      const updatedQuestions = agentProfile.customQuestions.filter(q => q.id !== questionId);
-      const updatedProfile = { ...agentProfile, customQuestions: updatedQuestions };
-      
-      setAgentProfile(updatedProfile);
-      localStorage.setItem("agentProfile", JSON.stringify(updatedProfile));
-      
-      // Update in agentProfiles array
-      const storedProfiles = localStorage.getItem("agentProfiles");
-      if (storedProfiles) {
-        const agentProfiles = JSON.parse(storedProfiles);
-        const index = agentProfiles.findIndex((p: AgentProfile) => p.id === updatedProfile.id);
-        if (index >= 0) {
-          agentProfiles[index] = updatedProfile;
-        }
-        localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
-      }
-      
-      return true;
-    } catch (error) {
-      console.error("Delete custom question error:", error);
-      return false;
-    }
-  };
-  
-  const updateCustomQuestion = async (question: CustomQuestion): Promise<boolean> => {
-    try {
-      if (!agentProfile || !agentProfile.customQuestions) return false;
-      
-      const updatedQuestions = agentProfile.customQuestions.map(q => 
-        q.id === question.id ? question : q
-      );
-      const updatedProfile = { ...agentProfile, customQuestions: updatedQuestions };
-      
-      setAgentProfile(updatedProfile);
-      localStorage.setItem("agentProfile", JSON.stringify(updatedProfile));
-      
-      // Update in agentProfiles array
-      const storedProfiles = localStorage.getItem("agentProfiles");
-      if (storedProfiles) {
-        const agentProfiles = JSON.parse(storedProfiles);
-        const index = agentProfiles.findIndex((p: AgentProfile) => p.id === updatedProfile.id);
-        if (index >= 0) {
-          agentProfiles[index] = updatedProfile;
-        }
-        localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
-      }
-      
-      return true;
-    } catch (error) {
-      console.error("Update custom question error:", error);
-      return false;
-    }
-  };
-
-  return (
-    <AuthContext.Provider value={{
-      isAuthenticated,
-      agentProfile,
-      isLoading,
-      login,
-      logout,
-      signup,
-      updateProfile,
-      addCustomQuestion,
-      deleteCustomQuestion,
-      updateCustomQuestion
-    }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => useContext(AuthContext);
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+};
