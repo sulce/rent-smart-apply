@@ -17,6 +17,10 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateAgentProfile: (profileData: Partial<AgentProfile>) => Promise<void>;
   createAgentProfile: (profileData: Omit<AgentProfile, "id">) => Promise<void>;
+  addCustomQuestion: (question: CustomQuestion) => Promise<void>;
+  deleteCustomQuestion: (questionId: string) => Promise<void>;
+  updateCustomQuestion: (question: CustomQuestion) => Promise<void>;
+  updateProfile: (profile: UserProfile) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
