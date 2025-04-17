@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
-import { AgentProfile, UserRole, UserProfile, CustomQuestion } from "@/types"; // Added missing types
+import { AgentProfile, UserRole, UserProfile, CustomQuestion } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { User, Session } from '@supabase/supabase-js';
@@ -11,11 +10,11 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   agentProfile: AgentProfile | null;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
+  login: (email: string, password: string, navigate: (path: string) => void) => Promise<void>;
+  signup: (email: string, password: string, navigate: (path: string) => void) => Promise<void>;
+  logout: (navigate: (path: string) => void) => Promise<void>;
   updateAgentProfile: (profileData: Partial<AgentProfile>) => Promise<void>;
-  createAgentProfile: (profileData: Omit<AgentProfile, "id">) => Promise<void>;
+  createAgentProfile: (profileData: Omit<AgentProfile, "id">, navigate: (path: string) => void) => Promise<void>;
   addCustomQuestion: (question: CustomQuestion) => Promise<void>;
   deleteCustomQuestion: (questionId: string) => Promise<void>;
   updateCustomQuestion: (question: CustomQuestion) => Promise<void>;
@@ -30,7 +29,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [agentProfile, setAgentProfile] = useState<AgentProfile | null>(null);
-  const navigate = useNavigate();
   const { toast } = useToast();
 
   // Initialize authentication state
@@ -131,7 +129,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Login with email and password
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, navigate: (path: string) => void) => {
     try {
       setIsLoading(true);
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -160,7 +158,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Sign up with email and password
-  const signup = async (email: string, password: string) => {
+  const signup = async (email: string, password: string, navigate: (path: string) => void) => {
     try {
       setIsLoading(true);
       const { data, error } = await supabase.auth.signUp({
@@ -189,7 +187,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Logout
-  const logout = async () => {
+  const logout = async (navigate: (path: string) => void) => {
     try {
       setIsLoading(true);
       await supabase.auth.signOut();
@@ -323,7 +321,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Create agent profile
-  const createAgentProfile = async (profileData: Omit<AgentProfile, "id">) => {
+  const createAgentProfile = async (profileData: Omit<AgentProfile, "id">, navigate: (path: string) => void) => {
     try {
       if (!user) {
         throw new Error("User not authenticated");
@@ -608,10 +606,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     logout,
     updateAgentProfile,
     createAgentProfile,
-    addCustomQuestion,       // Added missing method
-    deleteCustomQuestion,    // Added missing method
-    updateCustomQuestion,    // Added missing method
-    updateProfile,           // Added missing method
+    addCustomQuestion,
+    deleteCustomQuestion,
+    updateCustomQuestion,
+    updateProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
