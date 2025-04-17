@@ -1,6 +1,6 @@
 
 import React, { createContext, useState, useContext, useEffect } from "react";
-import { AgentProfile } from "../types";
+import { AgentProfile, CustomQuestion } from "../types";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -10,6 +10,9 @@ interface AuthContextType {
   logout: () => void;
   signup: (email: string, password: string, name: string, businessName: string) => Promise<boolean>;
   updateProfile: (profile: Partial<AgentProfile>) => Promise<boolean>;
+  addCustomQuestion: (question: CustomQuestion) => Promise<boolean>;
+  deleteCustomQuestion: (questionId: string) => Promise<boolean>;
+  updateCustomQuestion: (question: CustomQuestion) => Promise<boolean>;
 }
 
 // Create the context with default values
@@ -21,6 +24,9 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
   signup: async () => false,
   updateProfile: async () => false,
+  addCustomQuestion: async () => false,
+  deleteCustomQuestion: async () => false,
+  updateCustomQuestion: async () => false,
 });
 
 // Sample agent data for the MVP
@@ -155,6 +161,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // New methods for handling custom questions
+  const addCustomQuestion = async (question: CustomQuestion): Promise<boolean> => {
+    try {
+      if (!agentProfile) return false;
+      
+      const updatedQuestions = [...(agentProfile.customQuestions || []), question];
+      const updatedProfile = { ...agentProfile, customQuestions: updatedQuestions };
+      
+      setAgentProfile(updatedProfile);
+      localStorage.setItem("agentProfile", JSON.stringify(updatedProfile));
+      
+      return true;
+    } catch (error) {
+      console.error("Add custom question error:", error);
+      return false;
+    }
+  };
+  
+  const deleteCustomQuestion = async (questionId: string): Promise<boolean> => {
+    try {
+      if (!agentProfile || !agentProfile.customQuestions) return false;
+      
+      const updatedQuestions = agentProfile.customQuestions.filter(q => q.id !== questionId);
+      const updatedProfile = { ...agentProfile, customQuestions: updatedQuestions };
+      
+      setAgentProfile(updatedProfile);
+      localStorage.setItem("agentProfile", JSON.stringify(updatedProfile));
+      
+      return true;
+    } catch (error) {
+      console.error("Delete custom question error:", error);
+      return false;
+    }
+  };
+  
+  const updateCustomQuestion = async (question: CustomQuestion): Promise<boolean> => {
+    try {
+      if (!agentProfile || !agentProfile.customQuestions) return false;
+      
+      const updatedQuestions = agentProfile.customQuestions.map(q => 
+        q.id === question.id ? question : q
+      );
+      const updatedProfile = { ...agentProfile, customQuestions: updatedQuestions };
+      
+      setAgentProfile(updatedProfile);
+      localStorage.setItem("agentProfile", JSON.stringify(updatedProfile));
+      
+      return true;
+    } catch (error) {
+      console.error("Update custom question error:", error);
+      return false;
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       isAuthenticated,
@@ -163,7 +223,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       login,
       logout,
       signup,
-      updateProfile
+      updateProfile,
+      addCustomQuestion,
+      deleteCustomQuestion,
+      updateCustomQuestion
     }}>
       {children}
     </AuthContext.Provider>

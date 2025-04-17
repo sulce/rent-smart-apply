@@ -42,6 +42,9 @@ interface FormData {
   
   // Documents
   documents: Document[];
+  
+  // Custom Answers
+  customAnswers: { questionId: string; answer: string }[];
 }
 
 const TenantApplication = () => {
@@ -81,23 +84,40 @@ const TenantApplication = () => {
     
     // Documents
     documents: [],
+    
+    // Custom Answers
+    customAnswers: [],
   });
 
   // Load agent profile based on the slug
   useEffect(() => {
-    const fetchAgentBySlug = () => {
-      // First check localStorage for agents
-      const storedAgents = localStorage.getItem("agentProfiles");
+    const fetchAgentBySlug = async () => {
+      console.log("Fetching agent with slug:", agentSlug);
       
-      if (storedAgents) {
+      // First check localStorage for all agents
+      const storedProfiles = localStorage.getItem("agentProfiles");
+      
+      if (storedProfiles) {
         try {
-          const agentProfiles = JSON.parse(storedAgents);
-          // If it's an array, find the agent with matching slug
+          const agentProfiles = JSON.parse(storedProfiles);
+          console.log("Found agent profiles:", agentProfiles);
+          
           if (Array.isArray(agentProfiles)) {
             const foundAgent = agentProfiles.find(agent => agent.urlSlug === agentSlug);
             if (foundAgent) {
+              console.log("Found agent in agentProfiles:", foundAgent);
               setAgent(foundAgent);
-              console.log("Found agent from agentProfiles:", foundAgent);
+              
+              // Set up custom questions if the agent has any
+              if (foundAgent.customQuestions?.length) {
+                setFormData(prev => ({
+                  ...prev,
+                  customAnswers: foundAgent.customQuestions.map(q => ({ 
+                    questionId: q.id, 
+                    answer: "" 
+                  }))
+                }));
+              }
               return;
             }
           }
@@ -112,8 +132,19 @@ const TenantApplication = () => {
         try {
           const agentData = JSON.parse(storedAgent);
           if (agentData.urlSlug === agentSlug) {
+            console.log("Found agent in agentProfile:", agentData);
             setAgent(agentData);
-            console.log("Found agent from agentProfile:", agentData);
+            
+            // Set up custom questions if the agent has any
+            if (agentData.customQuestions?.length) {
+              setFormData(prev => ({
+                ...prev,
+                customAnswers: agentData.customQuestions.map(q => ({ 
+                  questionId: q.id, 
+                  answer: "" 
+                }))
+              }));
+            }
             return;
           }
         } catch (error) {
@@ -122,15 +153,16 @@ const TenantApplication = () => {
       }
       
       // If we can't find the agent, use a sample agent
+      console.log("No agent found with slug:", agentSlug);
       const sampleAgent = {
-        id: "agent-1",
-        name: "Jane Smith",
-        businessName: "Smith Real Estate",
-        email: "jane@smithrealestate.com",
+        id: "agent-sample",
+        name: "Sample Agent",
+        businessName: "Sample Real Estate",
+        email: "sample@example.com",
         phone: "(555) 123-4567",
         logo: "/placeholder.svg",
         primaryColor: "#1a365d",
-        urlSlug: agentSlug || "jane-smith",
+        urlSlug: agentSlug || "sample-agent",
         customQuestions: []
       };
       
@@ -166,6 +198,16 @@ const TenantApplication = () => {
     }
   };
 
+  // Handle custom question answers
+  const handleCustomQuestionChange = (questionId: string, answer: string) => {
+    setFormData(prev => ({
+      ...prev,
+      customAnswers: prev.customAnswers.map(q => 
+        q.questionId === questionId ? { ...q, answer } : q
+      )
+    }));
+  };
+
   // Add a new reference
   const addReference = () => {
     setFormData({
@@ -199,6 +241,12 @@ const TenantApplication = () => {
     try {
       if (!agent) {
         console.error("No agent found for application submission");
+        toast({
+          title: "Submission Error",
+          description: "Could not identify the agent for this application.",
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
         return;
       }
       
@@ -229,6 +277,7 @@ const TenantApplication = () => {
         },
         references: formData.references,
         documents: formData.documents,
+        customAnswers: formData.customAnswers
       });
       
       console.log("Application created successfully:", newApplication);
@@ -273,6 +322,9 @@ const TenantApplication = () => {
       title: "Documents",
       fields: ["documents"],
     },
+    ...(agent?.customQuestions && agent.customQuestions.length > 0 
+      ? [{ title: "Additional Questions", fields: ["customQuestions"] }] 
+      : []),
   ];
 
   // Check if the current step is valid
@@ -306,6 +358,15 @@ const TenantApplication = () => {
     } else if (currentStep === 4) {
       // Documents validation (optional)
       return true;
+    } else if (currentStep === 5 && agent?.customQuestions?.length) {
+      // Custom questions validation - only required questions must be filled
+      const requiredQuestions = agent.customQuestions.filter(q => q.required);
+      if (requiredQuestions.length === 0) return true;
+      
+      return requiredQuestions.every(q => {
+        const answer = formData.customAnswers.find(a => a.questionId === q.id)?.answer;
+        return answer && answer.trim() !== "";
+      });
     }
     
     return false;
@@ -716,7 +777,109 @@ const TenantApplication = () => {
               </div>
             )}
             
-            <div className="form-navigation">
+            {/* Step 6: Custom Questions */}
+            {currentStep === 5 && agent?.customQuestions && agent.customQuestions.length > 0 && (
+              <div className="form-step">
+                <div className="space-y-6">
+                  {agent.customQuestions.map((question) => (
+                    <div key={question.id} className="space-y-2">
+                      <Label htmlFor={`question-${question.id}`}>
+                        {question.questionText}
+                        {question.required && <span className="text-red-500 ml-1">*</span>}
+                      </Label>
+                      
+                      {question.type === "text" && (
+                        <Input
+                          id={`question-${question.id}`}
+                          value={formData.customAnswers.find(a => a.questionId === question.id)?.answer || ""}
+                          onChange={(e) => handleCustomQuestionChange(question.id, e.target.value)}
+                          required={question.required}
+                        />
+                      )}
+                      
+                      {question.type === "radio" && question.options && (
+                        <div className="space-y-2">
+                          {question.options.map((option, idx) => (
+                            <div key={idx} className="flex items-center">
+                              <input
+                                id={`question-${question.id}-option-${idx}`}
+                                type="radio"
+                                name={`question-${question.id}`}
+                                value={option}
+                                checked={formData.customAnswers.find(a => a.questionId === question.id)?.answer === option}
+                                onChange={() => handleCustomQuestionChange(question.id, option)}
+                                required={question.required}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                              />
+                              <label
+                                htmlFor={`question-${question.id}-option-${idx}`}
+                                className="ml-2 block text-sm text-gray-700"
+                              >
+                                {option}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {question.type === "checkbox" && question.options && (
+                        <div className="space-y-2">
+                          {question.options.map((option, idx) => (
+                            <div key={idx} className="flex items-center">
+                              <input
+                                id={`question-${question.id}-option-${idx}`}
+                                type="checkbox"
+                                value={option}
+                                checked={formData.customAnswers.find(a => a.questionId === question.id)?.answer?.includes(option) || false}
+                                onChange={(e) => {
+                                  const currentAnswers = formData.customAnswers.find(a => a.questionId === question.id)?.answer || "";
+                                  const answersArray = currentAnswers ? currentAnswers.split(",") : [];
+                                  
+                                  if (e.target.checked) {
+                                    answersArray.push(option);
+                                  } else {
+                                    const index = answersArray.indexOf(option);
+                                    if (index > -1) answersArray.splice(index, 1);
+                                  }
+                                  
+                                  handleCustomQuestionChange(question.id, answersArray.join(","));
+                                }}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                              <label
+                                htmlFor={`question-${question.id}-option-${idx}`}
+                                className="ml-2 block text-sm text-gray-700"
+                              >
+                                {option}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {question.type === "select" && question.options && (
+                        <select
+                          id={`question-${question.id}`}
+                          value={formData.customAnswers.find(a => a.questionId === question.id)?.answer || ""}
+                          onChange={(e) => handleCustomQuestionChange(question.id, e.target.value)}
+                          required={question.required}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                        >
+                          <option value="">Select an option</option>
+                          {question.options.map((option, idx) => (
+                            <option key={idx} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            <div className="form-navigation mt-8 flex justify-between">
               {currentStep > 0 && (
                 <Button
                   variant="outline"

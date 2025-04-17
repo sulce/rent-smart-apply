@@ -74,5 +74,5 @@ export interface TenantApplication {
     questionId: string;
     answer: string | string[];
   }[];
-  additionalInfoRequest?: string; // Add this field to store requests for additional information
+  additionalInfoRequest?: string; // Field to store requests for additional information
 }

@@ -11,7 +11,7 @@ import ApplicationCard from "@/components/application/ApplicationCard";
 
 const Dashboard = () => {
   const { agentProfile } = useAuth();
-  const { applications, isLoading } = useApplications();
+  const { applications } = useApplications();
   const navigate = useNavigate();
 
   // Debug logging for applications and agent profile
@@ -70,6 +70,7 @@ const Dashboard = () => {
             <Button
               onClick={() => navigate("/applications")}
               className="bg-realestate-navy hover:bg-realestate-navy/90"
+              style={{ backgroundColor: agentProfile?.primaryColor }}
             >
               View All Applications
             </Button>
@@ -84,7 +85,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="flex items-center">
-                <Users className="h-6 w-6 mr-2 text-realestate-navy" />
+                <Users className="h-6 w-6 mr-2 text-realestate-navy" style={{ color: agentProfile?.primaryColor }} />
                 <span className="text-3xl font-bold">{totalApplications}</span>
               </div>
             </CardContent>
@@ -158,12 +159,13 @@ const Dashboard = () => {
               size="sm"
               onClick={() => navigate("/applications")}
               className="text-realestate-teal"
+              style={{ color: agentProfile?.primaryColor }}
             >
               View all
             </Button>
           </div>
 
-          {isLoading ? (
+          {applications.length === 0 ? (
             <div className="text-center py-8">Loading applications...</div>
           ) : agentApplications.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -182,6 +184,7 @@ const Dashboard = () => {
                 <Button
                   onClick={copyApplicationLink}
                   className="bg-realestate-navy hover:bg-realestate-navy/90"
+                  style={{ backgroundColor: agentProfile?.primaryColor }}
                 >
                   Copy Application Link
                 </Button>
