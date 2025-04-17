@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useApplications } from "@/context/ApplicationContext";
-import { AgentProfile, Document } from "@/types";
+import { AgentProfile, Document, CustomQuestion } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import DocumentUploader from "@/components/application/DocumentUploader";
 import { ArrowRight, ArrowLeft, Building, CheckCircle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface FormData {
   // Personal Info
@@ -56,6 +56,7 @@ const TenantApplication = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [agent, setAgent] = useState<AgentProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Initialize form data
   const [formData, setFormData] = useState<FormData>({
@@ -92,82 +93,92 @@ const TenantApplication = () => {
   // Load agent profile based on the slug
   useEffect(() => {
     const fetchAgentBySlug = async () => {
-      console.log("Fetching agent with slug:", agentSlug);
-      
-      // First check localStorage for all agents
-      const storedProfiles = localStorage.getItem("agentProfiles");
-      
-      if (storedProfiles) {
-        try {
-          const agentProfiles = JSON.parse(storedProfiles);
-          console.log("Found agent profiles:", agentProfiles);
-          
-          if (Array.isArray(agentProfiles)) {
-            const foundAgent = agentProfiles.find(agent => agent.urlSlug === agentSlug);
-            if (foundAgent) {
-              console.log("Found agent in agentProfiles:", foundAgent);
-              setAgent(foundAgent);
+      try {
+        setIsLoading(true);
+        console.log("Fetching agent with slug:", agentSlug);
+        
+        // First check localStorage for all agents
+        const storedProfiles = localStorage.getItem("agentProfiles");
+        
+        if (storedProfiles) {
+          try {
+            const agentProfiles = JSON.parse(storedProfiles);
+            console.log("Found agent profiles:", agentProfiles);
+            
+            if (Array.isArray(agentProfiles) && agentProfiles.length > 0) {
+              const foundAgent = agentProfiles.find((agent: AgentProfile) => agent.urlSlug === agentSlug);
+              if (foundAgent) {
+                console.log("Found agent in agentProfiles:", foundAgent);
+                setAgent(foundAgent);
+                
+                // Set up custom questions if the agent has any
+                if (foundAgent.customQuestions?.length) {
+                  setFormData(prev => ({
+                    ...prev,
+                    customAnswers: foundAgent.customQuestions.map((q: CustomQuestion) => ({ 
+                      questionId: q.id, 
+                      answer: "" 
+                    }))
+                  }));
+                }
+                
+                setIsLoading(false);
+                return;
+              }
+            }
+          } catch (error) {
+            console.error("Error parsing agentProfiles:", error);
+          }
+        }
+        
+        // Check individual agent profile
+        const storedAgent = localStorage.getItem("agentProfile");
+        if (storedAgent) {
+          try {
+            const agentData = JSON.parse(storedAgent);
+            if (agentData.urlSlug === agentSlug) {
+              console.log("Found agent in agentProfile:", agentData);
+              setAgent(agentData);
               
               // Set up custom questions if the agent has any
-              if (foundAgent.customQuestions?.length) {
+              if (agentData.customQuestions?.length) {
                 setFormData(prev => ({
                   ...prev,
-                  customAnswers: foundAgent.customQuestions.map(q => ({ 
+                  customAnswers: agentData.customQuestions.map((q: CustomQuestion) => ({ 
                     questionId: q.id, 
                     answer: "" 
                   }))
                 }));
               }
+              
+              setIsLoading(false);
               return;
             }
+          } catch (error) {
+            console.error("Error parsing agentProfile:", error);
           }
-        } catch (error) {
-          console.error("Error parsing agentProfiles:", error);
         }
+        
+        // If not found anywhere, use a default agent
+        const defaultAgent: AgentProfile = {
+          id: `agent-default-${Date.now()}`,
+          name: "Default Agent",
+          businessName: "Default Real Estate",
+          email: "contact@defaultrealestate.com",
+          phone: "(555) 555-5555",
+          logo: "/placeholder.svg",
+          primaryColor: "#1a365d",
+          urlSlug: agentSlug || "default-agent",
+          customQuestions: []
+        };
+        
+        console.log("Using default agent:", defaultAgent);
+        setAgent(defaultAgent);
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Error fetching agent:", error);
+        setIsLoading(false);
       }
-      
-      // Check individual agent profile
-      const storedAgent = localStorage.getItem("agentProfile");
-      if (storedAgent) {
-        try {
-          const agentData = JSON.parse(storedAgent);
-          if (agentData.urlSlug === agentSlug) {
-            console.log("Found agent in agentProfile:", agentData);
-            setAgent(agentData);
-            
-            // Set up custom questions if the agent has any
-            if (agentData.customQuestions?.length) {
-              setFormData(prev => ({
-                ...prev,
-                customAnswers: agentData.customQuestions.map(q => ({ 
-                  questionId: q.id, 
-                  answer: "" 
-                }))
-              }));
-            }
-            return;
-          }
-        } catch (error) {
-          console.error("Error parsing agentProfile:", error);
-        }
-      }
-      
-      // If we can't find the agent, use a sample agent
-      console.log("No agent found with slug:", agentSlug);
-      const sampleAgent = {
-        id: "agent-sample",
-        name: "Sample Agent",
-        businessName: "Sample Real Estate",
-        email: "sample@example.com",
-        phone: "(555) 123-4567",
-        logo: "/placeholder.svg",
-        primaryColor: "#1a365d",
-        urlSlug: agentSlug || "sample-agent",
-        customQuestions: []
-      };
-      
-      console.log("Using sample agent:", sampleAgent);
-      setAgent(sampleAgent);
     };
     
     fetchAgentBySlug();
@@ -299,6 +310,17 @@ const TenantApplication = () => {
       setIsSubmitting(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p className="text-lg font-medium text-gray-700">Loading application form...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Steps configuration
   const steps = [
@@ -503,7 +525,7 @@ const TenantApplication = () => {
             </div>
           </div>
           
-          <Card className="multi-step-form-container">
+          <Card className="p-6">
             <h2 className="text-2xl font-bold mb-6">{steps[currentStep].title}</h2>
             
             {/* Step 1: Personal Information */}

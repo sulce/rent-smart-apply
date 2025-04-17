@@ -1,6 +1,7 @@
 
 import React, { createContext, useState, useContext, useEffect } from "react";
 import { AgentProfile, CustomQuestion } from "../types";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -63,15 +64,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     // Check for existing session on mount
-    const checkAuth = () => {
-      const storedAuth = localStorage.getItem("isAuthenticated");
-      const storedProfile = localStorage.getItem("agentProfile");
-      
-      if (storedAuth === "true" && storedProfile) {
-        setIsAuthenticated(true);
-        setAgentProfile(JSON.parse(storedProfile));
+    const checkAuth = async () => {
+      try {
+        setIsLoading(true);
+        
+        // First check local storage for stored agent profile
+        const storedAuth = localStorage.getItem("isAuthenticated");
+        const storedProfile = localStorage.getItem("agentProfile");
+        
+        if (storedAuth === "true" && storedProfile) {
+          const parsedProfile = JSON.parse(storedProfile);
+          console.log("Found stored agent profile:", parsedProfile);
+          setIsAuthenticated(true);
+          setAgentProfile(parsedProfile);
+          
+          // Store in agentProfiles array for other components to access
+          const agentProfiles = JSON.parse(localStorage.getItem("agentProfiles") || "[]");
+          
+          // Update or add the agent profile
+          const existingIndex = agentProfiles.findIndex((p: AgentProfile) => p.id === parsedProfile.id);
+          if (existingIndex >= 0) {
+            agentProfiles[existingIndex] = parsedProfile;
+          } else {
+            agentProfiles.push(parsedProfile);
+          }
+          
+          localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
+        } else {
+          console.log("No stored auth found");
+        }
+      } catch (error) {
+        console.error("Error checking auth:", error);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
     
     checkAuth();
@@ -90,6 +116,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Store in localStorage for persistence
         localStorage.setItem("isAuthenticated", "true");
         localStorage.setItem("agentProfile", JSON.stringify(sampleAgentData));
+        
+        // Add to agentProfiles array
+        const agentProfiles = [sampleAgentData];
+        localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
         
         return true;
       }
@@ -130,6 +160,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem("isAuthenticated", "true");
       localStorage.setItem("agentProfile", JSON.stringify(newAgent));
       
+      // Add to agentProfiles array
+      const storedProfiles = localStorage.getItem("agentProfiles");
+      let agentProfiles = storedProfiles ? JSON.parse(storedProfiles) : [];
+      agentProfiles.push(newAgent);
+      localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
+      
       return true;
     } catch (error) {
       console.error("Signup error:", error);
@@ -154,6 +190,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAgentProfile(updatedProfile);
       localStorage.setItem("agentProfile", JSON.stringify(updatedProfile));
       
+      // Update in agentProfiles array
+      const storedProfiles = localStorage.getItem("agentProfiles");
+      if (storedProfiles) {
+        const agentProfiles = JSON.parse(storedProfiles);
+        const index = agentProfiles.findIndex((p: AgentProfile) => p.id === updatedProfile.id);
+        if (index >= 0) {
+          agentProfiles[index] = updatedProfile;
+        } else {
+          agentProfiles.push(updatedProfile);
+        }
+        localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
+      }
+      
       return true;
     } catch (error) {
       console.error("Update profile error:", error);
@@ -172,6 +221,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAgentProfile(updatedProfile);
       localStorage.setItem("agentProfile", JSON.stringify(updatedProfile));
       
+      // Update in agentProfiles array
+      const storedProfiles = localStorage.getItem("agentProfiles");
+      if (storedProfiles) {
+        const agentProfiles = JSON.parse(storedProfiles);
+        const index = agentProfiles.findIndex((p: AgentProfile) => p.id === updatedProfile.id);
+        if (index >= 0) {
+          agentProfiles[index] = updatedProfile;
+        }
+        localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
+      }
+      
       return true;
     } catch (error) {
       console.error("Add custom question error:", error);
@@ -188,6 +248,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       setAgentProfile(updatedProfile);
       localStorage.setItem("agentProfile", JSON.stringify(updatedProfile));
+      
+      // Update in agentProfiles array
+      const storedProfiles = localStorage.getItem("agentProfiles");
+      if (storedProfiles) {
+        const agentProfiles = JSON.parse(storedProfiles);
+        const index = agentProfiles.findIndex((p: AgentProfile) => p.id === updatedProfile.id);
+        if (index >= 0) {
+          agentProfiles[index] = updatedProfile;
+        }
+        localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
+      }
       
       return true;
     } catch (error) {
@@ -207,6 +278,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       setAgentProfile(updatedProfile);
       localStorage.setItem("agentProfile", JSON.stringify(updatedProfile));
+      
+      // Update in agentProfiles array
+      const storedProfiles = localStorage.getItem("agentProfiles");
+      if (storedProfiles) {
+        const agentProfiles = JSON.parse(storedProfiles);
+        const index = agentProfiles.findIndex((p: AgentProfile) => p.id === updatedProfile.id);
+        if (index >= 0) {
+          agentProfiles[index] = updatedProfile;
+        }
+        localStorage.setItem("agentProfiles", JSON.stringify(agentProfiles));
+      }
       
       return true;
     } catch (error) {

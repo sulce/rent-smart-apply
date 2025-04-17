@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, ClipboardCheck, Clock, Bookmark, ExternalLink, Link as LinkIcon } from "lucide-react";
 import ApplicationCard from "@/components/application/ApplicationCard";
+import { useToast } from "@/hooks/use-toast";
 
 const Dashboard = () => {
   const { agentProfile } = useAuth();
   const { applications } = useApplications();
+  const { toast } = useToast();
   const navigate = useNavigate();
 
   // Debug logging for applications and agent profile
@@ -21,7 +23,7 @@ const Dashboard = () => {
       console.log("Agent ID:", agentProfile.id);
       console.log("All applications:", applications);
       
-      const agentApps = applications.filter(app => app.agentId === agentProfile.id);
+      const agentApps = agentProfile ? applications.filter(app => app.agentId === agentProfile.id) : [];
       console.log("Agent applications:", agentApps);
     }
   }, [applications, agentProfile]);
@@ -41,8 +43,11 @@ const Dashboard = () => {
     const applicationUrl = `${window.location.origin}/apply/${agentProfile.urlSlug}`;
     navigator.clipboard.writeText(applicationUrl);
     
-    // Alert the user that the link has been copied
-    alert("Application link copied to clipboard!");
+    // Show toast instead of alert
+    toast({
+      title: "Link Copied",
+      description: "Application link copied to clipboard!",
+    });
   };
 
   return (
@@ -69,8 +74,8 @@ const Dashboard = () => {
             </Button>
             <Button
               onClick={() => navigate("/applications")}
-              className="bg-realestate-navy hover:bg-realestate-navy/90"
-              style={{ backgroundColor: agentProfile?.primaryColor }}
+              className="text-white"
+              style={{ backgroundColor: agentProfile?.primaryColor || "#1a365d" }}
             >
               View All Applications
             </Button>
@@ -85,7 +90,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="flex items-center">
-                <Users className="h-6 w-6 mr-2 text-realestate-navy" style={{ color: agentProfile?.primaryColor }} />
+                <Users className="h-6 w-6 mr-2" style={{ color: agentProfile?.primaryColor || "#1a365d" }} />
                 <span className="text-3xl font-bold">{totalApplications}</span>
               </div>
             </CardContent>
@@ -115,7 +120,7 @@ const Dashboard = () => {
         </div>
 
         {/* Application Link Section */}
-        <Card className="bg-realestate-light border-none">
+        <Card className="bg-gray-50 border-none">
           <CardHeader>
             <CardTitle>Your Custom Application Link</CardTitle>
           </CardHeader>
@@ -158,8 +163,7 @@ const Dashboard = () => {
               variant="ghost" 
               size="sm"
               onClick={() => navigate("/applications")}
-              className="text-realestate-teal"
-              style={{ color: agentProfile?.primaryColor }}
+              style={{ color: agentProfile?.primaryColor || "#1a365d" }}
             >
               View all
             </Button>
@@ -183,8 +187,8 @@ const Dashboard = () => {
                 </p>
                 <Button
                   onClick={copyApplicationLink}
-                  className="bg-realestate-navy hover:bg-realestate-navy/90"
-                  style={{ backgroundColor: agentProfile?.primaryColor }}
+                  className="text-white"
+                  style={{ backgroundColor: agentProfile?.primaryColor || "#1a365d" }}
                 >
                   Copy Application Link
                 </Button>
