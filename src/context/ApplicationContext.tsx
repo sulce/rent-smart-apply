@@ -12,6 +12,8 @@ interface ApplicationContextType {
   getApplication: (id: string) => TenantApplication | undefined;
   updateApplication: (id: string, data: Partial<TenantApplication>) => void;
   deleteApplication: (id: string) => void;
+  updateApplicationStatus: (applicationId: string, status: ApplicationStatus) => Promise<void>;
+  getApplicationById: (applicationId: string) => Promise<TenantApplication | null>;
 }
 
 const ApplicationContext = createContext<ApplicationContextType | undefined>(undefined);
